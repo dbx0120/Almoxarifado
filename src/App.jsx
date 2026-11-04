@@ -207,4 +207,87 @@ export default function App() {
         <h2>Registrar Nova Requisição</h2>
         <p>Selecione o funcionário e o material para registrar quem retirou.</p>
         <form onSubmit={registerLoan} className="material-form" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: '10px', alignItems: 'end', marginBottom: '25px' }}>
-          <label>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})}><option value="">Selecione o funcionário...</
+          <label>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})}><option value="">Selecione o funcionário...</option>{employees.map(emp=>(<option key={emp.id} value={emp.id}>{emp.name}</option>))}</select></label>
+          <label>Material<select required value={loanForm.material_id} onChange={e=>setLoanForm({...loanForm, material_id: e.target.value})}><option value="">Selecione o material...</option>{materials.map(mat=>(<option key={mat.id} value={mat.id}>{mat.name} (Disp: {mat.quantity})</option>))}</select></label>
+          <label>Quantidade<input type="number" min="1" required value={loanForm.quantity} onChange={e=>setLoanForm({...loanForm, quantity: e.target.value})}/></label>
+          <button disabled={busy} style={{ height: '42px' }}>Registrar Retirada</button>
+        </form>
+
+        <h2>Histórico de Requisições e Devoluções</h2>
+        <div className="results">
+          {loans.length ? loans.map(l => (
+            <article className="result" key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee' }}>
+              <div>
+                <strong>{l.employees?.name || 'Funcionário'}</strong> retirou <strong>{l.quantity}x {l.materials?.name || 'Material'}</strong>
+                <br/><small>Data: {new Date(l.borrowed_at).toLocaleString('pt-BR')} {l.materials?.location ? `· Posição: ${l.materials.location}` : ''}</small>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ padding: '4px 10px', borderRadius: '4px', background: l.returned ? '#dcfce7' : '#fee2e2', color: l.returned ? '#166534' : '#991b1b', fontWeight: 'bold', fontSize: '12px' }}>
+                  {l.returned ? 'Devolvido ✓' : 'Com o funcionário ⏳'}
+                </span>
+                <button className="secondary" onClick={()=>toggleReturn(l.id, l.returned)} style={{ padding: '6px 12px', cursor: 'pointer' }}>
+                  {l.returned ? 'Marcar como não devolvido' : 'Marcar como Devolvido'}
+                </button>
+                <button className="delete-button" onClick={()=>deleteLoan(l.id)} title="Excluir requisição" style={{ padding: '6px 10px', cursor: 'pointer' }}>🗑️</button>
+              </div>
+            </article>
+          )) : <p className="empty">Nenhuma requisição registrada.</p>}
+        </div>
+      </div>}
+
+      {activeTab === 'reports' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
+        <h2>📊 Ranking de Pendências por Funcionário</h2>
+        <p>Veja abaixo quais colaboradores possuem mais materiais pendentes de devolução ou retiradas acumuladas.</p>
+        
+        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {employeeRanking.length ? employeeRanking.map(item => {
+            const maxVal = Math.max(...employeeRanking.map(i => i.totalLoans || 1), 1);
+            const pendingPercent = (item.pendingLoans / maxVal) * 100;
+            const totalPercent = (item.totalLoans / maxVal) * 100;
+
+            return (
+              <div key={item.name} style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '16px' }}>{item.name}</strong>
+                  <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
+                    <span style={{ color: '#dc2626', fontWeight: 'bold' }}>⚠️ Pendentes: {item.pendingLoans}</span>
+                    <span style={{ color: '#475569' }}>Total Requisições: {item.totalLoans}</span>
+                  </div>
+                </div>
+                {/* Barra de Progresso Gráfica */}
+                <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '12px', width: '100%', overflow: 'hidden', display: 'flex' }}>
+                  <div style={{ width: `${pendingPercent}%`, background: '#dc2626', transition: 'width 0.4s ease' }} title={`${item.pendingLoans} pendentes`} />
+                  <div style={{ width: `${totalPercent - pendingPercent}%`, background: '#2563eb', transition: 'width 0.4s ease' }} title={`Devolvidos`} />
+                </div>
+              </div>
+            );
+          }) : <p className="empty">Nenhum dado de funcionário para exibir no gráfico ainda.</p>}
+        </div>
+        <div style={{ marginTop: '20px', fontSize: '13px', color: '#64748b', display: 'flex', gap: '20px' }}>
+          <span><span style={{ display: 'inline-block', width: '12px', height: '12px', background: '#dc2626', borderRadius: '2px', marginRight: '5px' }}></span> Itens Pendentes (Com o funcionário)</span>
+          <span><span style={{ display: 'inline-block', width: '12px', height: '12px', background: '#2563eb', borderRadius: '2px', marginRight: '5px' }}></span> Itens Já Devolvidos</span>
+        </div>
+      </div>}
+
+      {activeTab === 'employees' && role === 'owner' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
+        <h2>Pré-cadastrar Funcionários</h2>
+        <p>Adicione o nome dos colaboradores para que você possa apenas selecioná-los rapidamente na hora de registrar uma retirada.</p>
+        <form onSubmit={addEmployee} className="material-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <input required placeholder="Nome completo do funcionário" value={employeeName} onChange={e=>setEmployeeName(e.target.value)} style={{ flex: 1 }}/>
+          <button disabled={busy}>Adicionar Funcionário</button>
+        </form>
+
+        <h3>Lista de Funcionários Cadastrados</h3>
+        <div className="results">
+          {employees.length ? employees.map(emp => (
+            <article className="result" key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px' }}>
+              <strong>{emp.name}</strong>
+              <button className="delete-button" onClick={()=>deleteEmployee(emp.id)} style={{ padding: '4px 8px' }}>Excluir</button>
+            </article>
+          )) : <p className="empty">Nenhum funcionário cadastrado ainda.</p>}
+        </div>
+      </div>}
+    </main>
+    <footer>ALMOXARIFADO VF7 <span>·</span> Sistema interno de controle</footer>
+  </div>;
+}
