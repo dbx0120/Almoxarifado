@@ -175,14 +175,12 @@ export default function App() {
 
   async function performInventoryCheck() {
     setBusy(true); setMessage('');
-    // Cria a tabela caso não exista logicamente na primeira execução, e registra a auditoria
     const { error } = await supabase.from('inventory_audit').insert({
       checked_by: session?.user?.email || 'Administrador',
       checked_at: new Date().toISOString()
     });
     setBusy(false);
     if (error) {
-      // Se a tabela inventory_audit não existir no Supabase ainda, avisa de forma amigável
       setMessage('Erro ao registrar inventário. Certifique-se de criar a tabela inventory_audit no Supabase.');
       return;
     }
@@ -198,7 +196,6 @@ export default function App() {
     setEmployeePassword(''); setMessage('Senha compartilhada atualizada com sucesso.');
   }
 
-  // Estilos dinâmicos baseados no Tema Claro/Escuro
   const isDark = theme === 'dark';
   const themeStyles = {
     bg: isDark ? '#0f172a' : '#f8fafc',
@@ -218,7 +215,6 @@ export default function App() {
     <header className="topbar" style={{ background: themeStyles.cardBg, borderBottom: `1px solid ${themeStyles.border}` }}>
       <div className="brand"><div className="brand-mark small">VF7</div><div><strong>ALMOXARIFADO VF7</strong><span style={{ color: themeStyles.subText }}>Controle de Materiais e Requisições</span></div></div>
       <div className="user-tools" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-        {/* Botão de Sol / Lua */}
         <button onClick={()=>setTheme(isDark ? 'light' : 'dark')} title="Alternar Modo Claro / Escuro" style={{ background: 'none', border: `1px solid ${themeStyles.border}`, borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
           {isDark ? '☀️' : '🌙'}
         </button>
@@ -254,4 +250,128 @@ export default function App() {
         <h2 style={{ color: themeStyles.text }}>Registrar Nova Requisição</h2>
         <p style={{ color: themeStyles.subText }}>Selecione o funcionário e o material para registrar quem retirou.</p>
         <form onSubmit={registerLoan} className="material-form" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: '10px', alignItems: 'end', marginBottom: '25px' }}>
-          <label style={{ color: themeStyles.text }}>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.
+          <label style={{ color: themeStyles.text }}>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}><option value="">Selecione o funcionário...</option>{employees.map(emp=>(<option key={emp.id} value={emp.id}>{emp.name}</option>))}</select></label>
+          <label style={{ color: themeStyles.text }}>Material<select required value={loanForm.material_id} onChange={e=>setLoanForm({...loanForm, material_id: e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}><option value="">Selecione o material...</option>{materials.map(mat=>(<option key={mat.id} value={mat.id}>{mat.name} (Disp: {mat.quantity})</option>))}</select></label>
+          <label style={{ color: themeStyles.text }}>Quantidade<input type="number" min="1" required value={loanForm.quantity} onChange={e=>setLoanForm({...loanForm, quantity: e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label>
+          <button disabled={busy} style={{ height: '42px' }}>Registrar Retirada</button>
+        </form>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+          <h2 style={{ color: themeStyles.text }}>Histórico de Requisições e Devoluções</h2>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" onClick={()=>setLoanFilter('all')} style={{ padding: '6px 12px', cursor: 'pointer', background: loanFilter === 'all' ? '#2563eb' : themeStyles.inputBg, color: loanFilter === 'all' ? '#fff' : themeStyles.text, border: `1px solid ${themeStyles.border}`, borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}>Todos</button>
+            <button type="button" onClick={()=>setLoanFilter('pending')} style={{ padding: '6px 12px', cursor: 'pointer', background: loanFilter === 'pending' ? '#dc2626' : themeStyles.inputBg, color: loanFilter === 'pending' ? '#fff' : themeStyles.text, border: `1px solid ${themeStyles.border}`, borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}>⚠️ Apenas Pendentes</button>
+            <button type="button" onClick={()=>setLoanFilter('returned')} style={{ padding: '6px 12px', cursor: 'pointer', background: loanFilter === 'returned' ? '#166534' : themeStyles.inputBg, color: loanFilter === 'returned' ? '#fff' : themeStyles.text, border: `1px solid ${themeStyles.border}`, borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}>✓ Apenas Devolvidos</button>
+          </div>
+        </div>
+
+        <div className="results">
+          {filteredLoans.length ? filteredLoans.map(l => (
+            <article className="result" key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: `1px solid ${themeStyles.border}` }}>
+              <div>
+                <strong style={{ color: themeStyles.text }}>{l.employees?.name || 'Funcionário'}</strong> retirou <strong style={{ color: themeStyles.text }}>{l.quantity}x {l.materials?.name || 'Material'}</strong>
+                <br/><small style={{ color: themeStyles.subText }}>Data: {new Date(l.borrowed_at).toLocaleString('pt-BR')} {l.materials?.location ? `· Posição: ${l.materials.location}` : ''}</small>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ padding: '4px 10px', borderRadius: '4px', background: l.returned ? '#dcfce7' : '#fee2e2', color: l.returned ? '#166534' : '#991b1b', fontWeight: 'bold', fontSize: '12px' }}>
+                  {l.returned ? 'Devolvido ✓' : 'Com o funcionário ⏳'}
+                </span>
+                {role === 'owner' && <>
+                  <button className="secondary" onClick={()=>toggleReturn(l.id, l.returned)} style={{ padding: '6px 12px', cursor: 'pointer' }}>
+                    {l.returned ? 'Marcar como não devolvido' : 'Marcar como Devolvido'}
+                  </button>
+                  <button className="delete-button" onClick={()=>deleteLoan(l.id)} title="Excluir requisição" style={{ padding: '6px 10px', cursor: 'pointer' }}>🗑️</button>
+                </>}
+              </div>
+            </article>
+          )) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhuma requisição encontrada com este filtro.</p>}
+        </div>
+      </div>}
+
+      {activeTab === 'inventory_check' && <div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, padding: '25px', borderRadius: '8px' }}>
+        <h2 style={{ color: themeStyles.text, marginBottom: '10px' }}>📋 Auditoria e Inventário Semanal</h2>
+        <p style={{ color: themeStyles.subText, marginBottom: '25px' }}>
+          Este painel registra a conferência de todo o estoque do almoxarifado (realizada normalmente toda segunda-feira).
+        </p>
+
+        <div style={{ background: isDark ? '#0f172a' : '#f8fafc', border: `1px solid ${themeStyles.border}`, padding: '20px', borderRadius: '8px', marginBottom: '25px' }}>
+          <h3 style={{ color: themeStyles.text, fontSize: '16px', marginBottom: '8px' }}>Status da Última Conferência Geral</h3>
+          {inventoryLog ? (
+            <div>
+              <p style={{ fontSize: '18px', fontWeight: 'bold', color: '#16a34a', marginBottom: '5px' }}>
+                Conferido em: {new Date(inventoryLog.checked_at).toLocaleString('pt-BR')}
+              </p>
+              <small style={{ color: themeStyles.subText }}>Registrado por: {inventoryLog.checked_by || 'Administrador'}</small>
+            </div>
+          ) : (
+            <p style={{ color: '#dc2626', fontWeight: 'bold' }}>Nenhum inventário geral registrado até o momento.</p>
+          )}
+        </div>
+
+        {role === 'owner' ? (
+          <div>
+            <p style={{ color: themeStyles.text, marginBottom: '15px' }}>
+              Terminou de conferir todos os materiais do almoxarifado? Clique no botão abaixo para registrar automaticamente a data e a hora atual.
+            </p>
+            <button onClick={performInventoryCheck} disabled={busy} style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+              {busy ? 'Registrando...' : '✅ Registrar Inventário Geral Agora (1 Clique)'}
+            </button>
+          </div>
+        ) : (
+          <p style={{ color: themeStyles.subText, fontStyle: 'italic' }}>
+            * Apenas o administrador possui permissão para registrar e atualizar o inventário geral.
+          </p>
+        )}
+      </div>}
+
+      {activeTab === 'reports' && <div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, padding: '20px', borderRadius: '8px' }}>
+        <h2 style={{ color: themeStyles.text }}>📊 Ranking de Pendências por Funcionário</h2>
+        <p style={{ color: themeStyles.subText }}>Veja abaixo quais colaboradores possuem mais materiais pendentes de devolução ou retiradas acumuladas.</p>
+        
+        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {employeeRanking.length ? employeeRanking.map(item => {
+            const maxVal = Math.max(...employeeRanking.map(i => i.totalLoans || 1), 1);
+            const pendingPercent = (item.pendingLoans / maxVal) * 100;
+            const totalPercent = (item.totalLoans / maxVal) * 100;
+
+            return (
+              <div key={item.name} style={{ background: isDark ? '#0f172a' : '#f8fafc', padding: '15px', borderRadius: '8px', border: `1px solid ${themeStyles.border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '16px', color: themeStyles.text }}>{item.name}</strong>
+                  <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
+                    <span style={{ color: '#dc2626', fontWeight: 'bold' }}>⚠️ Pendentes: {item.pendingLoans}</span>
+                    <span style={{ color: themeStyles.subText }}>Total Requisições: {item.totalLoans}</span>
+                  </div>
+                </div>
+                <div style={{ background: isDark ? '#334155' : '#e2e8f0', borderRadius: '4px', height: '12px', width: '100%', overflow: 'hidden', display: 'flex' }}>
+                  <div style={{ width: `${pendingPercent}%`, background: '#dc2626', transition: 'width 0.4s ease' }} title={`${item.pendingLoans} pendentes`} />
+                  <div style={{ width: `${totalPercent - pendingPercent}%`, background: '#2563eb', transition: 'width 0.4s ease' }} title={`Devolvidos`} />
+                </div>
+              </div>
+            );
+          }) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhum dado de funcionário para exibir no gráfico ainda.</p>}
+        </div>
+      </div>}
+
+      {activeTab === 'employees' && role === 'owner' && <div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, padding: '20px', borderRadius: '8px' }}>
+        <h2 style={{ color: themeStyles.text }}>Pré-cadastrar Funcionários</h2>
+        <p style={{ color: themeStyles.subText }}>Adicione o nome dos colaboradores para que você possa apenas selecioná-los rapidamente na hora de registrar uma retirada.</p>
+        <form onSubmit={addEmployee} className="material-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <input required placeholder="Nome completo do funcionário" value={employeeName} onChange={e=>setEmployeeName(e.target.value)} style={{ flex: 1, background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/>
+          <button disabled={busy}>Adicionar Funcionário</button>
+        </form>
+
+        <h3 style={{ color: themeStyles.text }}>Lista de Funcionários Cadastrados</h3>
+        <div className="results">
+          {employees.length ? employees.map(emp => (
+            <article className="result" key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: `1px solid ${themeStyles.border}` }}>
+              <strong style={{ color: themeStyles.text }}>{emp.name}</strong>
+              <button className="delete-button" onClick={()=>deleteEmployee(emp.id)} style={{ padding: '4px 8px' }}>Excluir</button>
+            </article>
+          )) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhum funcionário cadastrado ainda.</p>}
+        </div>
+      </div>}
+    </main>
+    <footer style={{ color: themeStyles.subText, textAlign: 'center', padding: '20px' }}>ALMOXARIFADO VF7 <span>·</span> Sistema interno de controle</footer>
+  </div>;
+}
