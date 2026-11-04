@@ -67,7 +67,7 @@ export default function App() {
     );
   }, [materials, query]);
 
-  // Cálculo para o ranking de funcionários (mais pendências / retiradas)
+  // Cálculo para o ranking de funcionários baseado nas requisições
   const employeeRanking = useMemo(() => {
     const stats = {};
     employees.forEach(emp => {
@@ -154,6 +154,13 @@ export default function App() {
     else await loadData();
   }
 
+  async function deleteLoan(loanId) {
+    if (!window.confirm('Deseja realmente excluir este registro de requisição?')) return;
+    const { error } = await supabase.from('loans').delete().eq('id', loanId);
+    if (error) setMessage('Erro ao excluir requisição: ' + error.message);
+    else { setMessage('Requisição excluída.'); await loadData(); }
+  }
+
   async function changeEmployeePassword(e) {
     e.preventDefault(); setBusy(true); setMessage('');
     const { data, error } = await supabase.functions.invoke('change-employee-password', { body: { password: employeePassword } });
@@ -167,7 +174,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header className="topbar">
-      <div className="brand"><div className="brand-mark small">VF7</div><div><strong>ALMOXARIFADO VF7</strong><span>Controle de Materiais e Empréstimos</span></div></div>
+      <div className="brand"><div className="brand-mark small">VF7</div><div><strong>ALMOXARIFADO VF7</strong><span>Controle de Materiais e Requisições</span></div></div>
       <div className="user-tools">
         <span className="role">{role === 'owner' ? 'Administrador' : 'Consulta'}</span>
         <button className="ghost" onClick={signOut}>Sair</button>
@@ -176,7 +183,7 @@ export default function App() {
 
     <nav className="tabs-nav" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', padding: '15px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
       <button className={`tab-btn ${activeTab === 'inventory' ? 'active' : ''}`} onClick={()=>setActiveTab('inventory')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'inventory' ? '#2563eb' : '#fff', color: activeTab === 'inventory' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>📦 Estoque & Prateleiras</button>
-      <button className={`tab-btn ${activeTab === 'loans' ? 'active' : ''}`} onClick={()=>setActiveTab('loans')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'loans' ? '#2563eb' : '#fff', color: activeTab === 'loans' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>🔄 Empréstimos</button>
+      <button className={`tab-btn ${activeTab === 'loans' ? 'active' : ''}`} onClick={()=>setActiveTab('loans')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'loans' ? '#2563eb' : '#fff', color: activeTab === 'loans' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>🔄 Requisições</button>
       <button className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`} onClick={()=>setActiveTab('reports')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'reports' ? '#2563eb' : '#fff', color: activeTab === 'reports' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>📊 Relatório & Ranking</button>
       {role === 'owner' && <button className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`} onClick={()=>setActiveTab('employees')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'employees' ? '#2563eb' : '#fff', color: activeTab === 'employees' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>👥 Funcionários</button>}
     </nav>
@@ -197,90 +204,7 @@ export default function App() {
       </>}
 
       {activeTab === 'loans' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
-        <h2>Registrar Retirada / Empréstimo</h2>
-        <p>Selecione o funcionário e o material para registrar quem levou.</p>
+        <h2>Registrar Nova Requisição</h2>
+        <p>Selecione o funcionário e o material para registrar quem retirou.</p>
         <form onSubmit={registerLoan} className="material-form" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: '10px', alignItems: 'end', marginBottom: '25px' }}>
-          <label>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})}><option value="">Selecione o funcionário...</option>{employees.map(emp=>(<option key={emp.id} value={emp.id}>{emp.name}</option>))}</select></label>
-          <label>Material<select required value={loanForm.material_id} onChange={e=>setLoanForm({...loanForm, material_id: e.target.value})}><option value="">Selecione o material...</option>{materials.map(mat=>(<option key={mat.id} value={mat.id}>{mat.name} (Disp: {mat.quantity})</option>))}</select></label>
-          <label>Quantidade<input type="number" min="1" required value={loanForm.quantity} onChange={e=>setLoanForm({...loanForm, quantity: e.target.value})}/></label>
-          <button disabled={busy} style={{ height: '42px' }}>Registrar Retirada</button>
-        </form>
-
-        <h2>Histórico de Empréstimos e Devoluções</h2>
-        <div className="results">
-          {loans.length ? loans.map(l => (
-            <article className="result" key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee' }}>
-              <div>
-                <strong>{l.employees?.name || 'Funcionário'}</strong> retirou <strong>{l.quantity}x {l.materials?.name || 'Material'}</strong>
-                <br/><small>Data: {new Date(l.borrowed_at).toLocaleString('pt-BR')} {l.materials?.location ? `· Posição: ${l.materials.location}` : ''}</small>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ padding: '4px 10px', borderRadius: '4px', background: l.returned ? '#dcfce7' : '#fee2e2', color: l.returned ? '#166534' : '#991b1b', fontWeight: 'bold', fontSize: '12px' }}>
-                  {l.returned ? 'Devolvido ✓' : 'Com o funcionário ⏳'}
-                </span>
-                <button className="secondary" onClick={()=>toggleReturn(l.id, l.returned)} style={{ padding: '6px 12px', cursor: 'pointer' }}>
-                  {l.returned ? 'Marcar como não devolvido' : 'Marcar como Devolvido'}
-                </button>
-              </div>
-            </article>
-          )) : <p className="empty">Nenhum empréstimo registrado.</p>}
-        </div>
-      </div>}
-
-      {/* ABA DE RELATÓRIO E GRÁFICO */}
-      {activeTab === 'reports' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
-        <h2>📊 Ranking de Pendências por Funcionário</h2>
-        <p>Veja abaixo quais colaboradores possuem mais materiais pendentes de devolução ou retiradas acumuladas.</p>
-        
-        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {employeeRanking.length ? employeeRanking.map(item => {
-            const maxVal = Math.max(...employeeRanking.map(i => i.totalLoans || 1), 1);
-            const pendingPercent = (item.pendingLoans / maxVal) * 100;
-            const totalPercent = (item.totalLoans / maxVal) * 100;
-
-            return (
-              <div key={item.name} style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <strong style={{ fontSize: '16px' }}>{item.name}</strong>
-                  <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
-                    <span style={{ color: '#dc2626', fontWeight: 'bold' }}>⚠️ Pendentes: {item.pendingLoans}</span>
-                    <span style={{ color: '#475569' }}>Total Retiradas: {item.totalLoans}</span>
-                  </div>
-                </div>
-                {/* Barra de Progresso Gráfica */}
-                <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '12px', width: '100%', overflow: 'hidden', display: 'flex' }}>
-                  <div style={{ width: `${pendingPercent}%`, background: '#dc2626', transition: 'width 0.4s ease' }} title={`${item.pendingLoans} pendentes`} />
-                  <div style={{ width: `${totalPercent - pendingPercent}%`, background: '#2563eb', transition: 'width 0.4s ease' }} title={`Devolvidos`} />
-                </div>
-              </div>
-            );
-          }) : <p className="empty">Nenhum dado de funcionário para exibir no gráfico ainda.</p>}
-        </div>
-        <div style={{ marginTop: '20px', fontSize: '13px', color: '#64748b', display: 'flex', gap: '20px' }}>
-          <span><span style={{ display: 'inline-block', width: '12px', height: '12px', background: '#dc2626', borderRadius: '2px', marginRight: '5px' }}></span> Itens Pendentes (Com o funcionário)</span>
-          <span><span style={{ display: 'inline-block', width: '12px', height: '12px', background: '#2563eb', borderRadius: '2px', marginRight: '5px' }}></span> Itens Já Devolvidos</span>
-        </div>
-      </div>}
-
-      {activeTab === 'employees' && role === 'owner' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
-        <h2>Pré-cadastrar Funcionários</h2>
-        <p>Adicione o nome dos colaboradores para que você possa apenas selecioná-los rapidamente na hora de registrar uma retirada.</p>
-        <form onSubmit={addEmployee} className="material-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          <input required placeholder="Nome completo do funcionário" value={employeeName} onChange={e=>setEmployeeName(e.target.value)} style={{ flex: 1 }}/>
-          <button disabled={busy}>Adicionar Funcionário</button>
-        </form>
-
-        <h3>Lista de Funcionários Cadastrados</h3>
-        <div className="results">
-          {employees.length ? employees.map(emp => (
-            <article className="result" key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px' }}>
-              <strong>{emp.name}</strong>
-              <button className="delete-button" onClick={()=>deleteEmployee(emp.id)} style={{ padding: '4px 8px' }}>Excluir</button>
-            </article>
-          )) : <p className="empty">Nenhum funcionário cadastrado ainda.</p>}
-        </div>
-      </div>}
-    </main>
-    <footer>ALMOXARIFADO VF7 <span>·</span> Sistema interno de controle</footer>
-  </div>;
-}
+          <label>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})}><option value="">Selecione o funcionário...</
