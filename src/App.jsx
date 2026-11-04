@@ -212,14 +212,21 @@ export default function App() {
   if (!session) return <main className="login-page"><form className="login-card" onSubmit={signIn}><div className="brand-mark">VF7</div><h1>Almoxarifado VF7</h1><p>Entre para acessar o almoxarifado.</p><label>E-mail<input type="email" required value={login.email} onChange={e=>setLogin({...login,email:e.target.value})}/></label><label>Senha<input type="password" required value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/></label><button disabled={busy}>{busy?'Entrando…':'Entrar'}</button>{message && <p className="notice">{message}</p>}</form></main>;
 
   return <div className="app-shell" style={{ background: themeStyles.bg, color: themeStyles.text, minHeight: '100vh', transition: 'background 0.3s ease' }}>
-    <header className="topbar" style={{ background: themeStyles.cardBg, borderBottom: `1px solid ${themeStyles.border}` }}>
-      <div className="brand"><div className="brand-mark small">VF7</div><div><strong>ALMOXARIFADO VF7</strong><span style={{ color: themeStyles.subText }}>Controle de Materiais e Requisições</span></div></div>
+    {/* Topbar com o Azul Escuro Original */}
+    <header className="topbar" style={{ background: '#0f172a', borderBottom: '1px solid #1e293b', color: '#ffffff', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="brand-mark small" style={{ background: '#2563eb', color: '#fff', padding: '6px 10px', borderRadius: '6px', fontWeight: 'bold' }}>VF7</div>
+        <div>
+          <strong style={{ fontSize: '16px', letterSpacing: '0.5px' }}>ALMOXARIFADO VF7</strong>
+          <span style={{ display: 'block', fontSize: '12px', color: '#94a3b8' }}>Controle de Materiais e Requisições</span>
+        </div>
+      </div>
       <div className="user-tools" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-        <button onClick={()=>setTheme(isDark ? 'light' : 'dark')} title="Alternar Modo Claro / Escuro" style={{ background: 'none', border: `1px solid ${themeStyles.border}`, borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+        <button onClick={()=>setTheme(isDark ? 'light' : 'dark')} title="Alternar Modo Claro / Escuro" style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '50%', width: '38px', height: '38px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
           {isDark ? '☀️' : '🌙'}
         </button>
-        <span className="role" style={{ color: themeStyles.text }}>{role === 'owner' ? 'Administrador' : 'Consulta'}</span>
-        <button className="ghost" onClick={signOut}>Sair</button>
+        <span className="role" style={{ fontSize: '13px', background: '#1e293b', padding: '4px 10px', borderRadius: '4px', color: '#cbd5e1' }}>{role === 'owner' ? 'Administrador' : 'Consulta'}</span>
+        <button className="ghost" onClick={signOut} style={{ background: 'transparent', border: '1px solid #475569', color: '#fff', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer' }}>Sair</button>
       </div>
     </header>
 
@@ -235,7 +242,7 @@ export default function App() {
       {message && <div className="notice" style={{ marginBottom: '15px', padding: '10px', background: isDark ? '#1e293b' : '#eff6ff', border: `1px solid ${isDark ? '#334155' : '#bfdbfe'}`, borderRadius: '6px', color: themeStyles.text }}>{message}</div>}
 
       {activeTab === 'inventory' && <>
-        <section className="welcome"><div><p className="eyebrow" style={{ color: '#3b82f6' }}>LOCALIZE RÁPIDO</p><h1>Onde está o material?</h1><p style={{ color: themeStyles.subText }}>Consulte a quantidade e a posição exata no almoxarifado.</p></div></section>
+        <section className="welcome"><div><p className="eyebrow" style={{ color: '#3b82f6' }}>LOCALIZE RÁPIDO</p><h1 style={{ color: themeStyles.text }}>Onde está o material?</h1><p style={{ color: themeStyles.subText }}>Consulte a quantidade e a posição exata no almoxarifado.</p></div></section>
         
         <section className="search-panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, padding: '20px', borderRadius: '8px' }}><label htmlFor="global-search" style={{ color: themeStyles.text }}>Busca geral</label><input id="global-search" className="search-input" placeholder="Digite o nome ou código do material…" value={query} onChange={e=>setQuery(e.target.value)} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/>{query.trim() && <div className="results"><div className="result-count" style={{ color: themeStyles.subText }}>{filtered.length} resultado(s)</div>{filtered.length ? filtered.map(m=><article className="result" key={m.id} style={{ borderBottom: `1px solid ${themeStyles.border}` }}><div><strong style={{ color: themeStyles.text }}>{m.name}</strong><small style={{ color: themeStyles.subText }}>{m.code ? `Código: ${m.code}` : 'Sem código'} · Qtd: <strong style={{ color: themeStyles.text }}>{m.quantity}</strong></small></div><span className="location-tag">{m.location}</span>{role==='owner' && <button className="text-button" onClick={()=>startEdit(m)}>Editar</button>}</article>) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhum material encontrado.</p>}</div>}</section>
 
