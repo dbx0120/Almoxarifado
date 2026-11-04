@@ -8,10 +8,15 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [materials, setMaterials] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loans, setLoans] = useState([]);
   const [query, setQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
+  const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'loans', 'employees'
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ code: '', name: '', location: 'A1' });
+  const [form, setForm] = useState({ code: '', name: '', location: 'A1', quantity: 1 });
+  const [employeeName, setEmployeeName] = useState('');
+  const [loanForm, setLoanForm] = useState({ material_id: '', employee_id: '', quantity: 1 });
   const [login, setLogin] = useState({ email: '', password: '' });
   const [employeePassword, setEmployeePassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,15 +26,22 @@ export default function App() {
   async function loadProfile(user) {
     if (!user) { setRole(null); return; }
     const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-    if (error) { setMessage('Não foi possível carregar o perfil. Confira a configuração do banco.'); return; }
+    if (error) { setMessage('Não foi possível carregar o perfil.'); return; }
     setRole(data.role);
   }
-  async function loadMaterials() {
+  async function loadData() {
     if (!supabase) return;
-    const { data, error } = await supabase.from('materials').select('*').order('name');
-    if (error) setMessage('Erro ao carregar materiais: ' + error.message);
-    else setMaterials(data || []);
+    const [matRes, empRes, loanRes] = await Promise.all([
+      supabase.from('materials').select('*').order('name'),
+      supabase.from('employees').select('*').order('name'),
+      supabase.from('loans').select('*, materials(name, location), employees(name)').order('borrowed_at', { ascending: false })
+    ]);
+    if (matRes.error) setMessage('Erro ao carregar materiais: ' + matRes.error.message);
+    else setMaterials(matRes.data || []);
+    if (!empRes.error) setEmployees(empRes.data || []);
+    if (!loanRes.error) setLoans(loanRes.data || []);
   }
+
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(async ({ data }) => {
@@ -43,7 +55,8 @@ export default function App() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
-  useEffect(() => { if (session && role) loadMaterials(); }, [session, role]);
+
+  useEffect(() => { if (session && role) loadData(); }, [session, role]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('pt-BR');
@@ -61,46 +74,164 @@ export default function App() {
     if (error) setMessage('Não foi possível entrar. Confira usuário e senha.');
   }
   async function signOut() { await supabase.auth.signOut(); setMaterials([]); setSelectedLocation(''); }
-  function startNew() { setEditing(null); setForm({ code: '', name: '', location: selectedLocation || 'A1' }); }
-  function startEdit(m) { setEditing(m.id); setForm({ code: m.code || '', name: m.name, location: m.location }); }
+  function startNew() { setEditing(null); setForm({ code: '', name: '', location: selectedLocation || 'A1', quantity: 1 }); }
+  function startEdit(m) { setEditing(m.id); setForm({ code: m.code || '', name: m.name, location: m.location, quantity: m.quantity || 1 }); }
+
   async function saveMaterial(e) {
     e.preventDefault(); setBusy(true); setMessage('');
-    const payload = { code: form.code.trim() || null, name: form.name.trim(), location: form.location };
+    const payload = { code: form.code.trim() || null, name: form.name.trim(), location: form.location, quantity: Number(form.quantity) || 1 };
     const result = editing
       ? await supabase.from('materials').update(payload).eq('id', editing)
       : await supabase.from('materials').insert(payload);
     setBusy(false);
     if (result.error) { setMessage('Erro ao salvar: ' + result.error.message); return; }
-    setEditing(null); setForm({ code: '', name: '', location: selectedLocation || 'A1' }); await loadMaterials();
+    setEditing(null); setForm({ code: '', name: '', location: selectedLocation || 'A1', quantity: 1 }); await loadData();
     setMessage('Material salvo.');
   }
+
   async function deleteMaterial(id) {
     if (!window.confirm('Excluir este material?')) return;
     const { error } = await supabase.from('materials').delete().eq('id', id);
     if (error) setMessage('Erro ao excluir: ' + error.message);
-    else { setMessage('Material excluído.'); await loadMaterials(); }
+    else { setMessage('Material excluído.'); await loadData(); }
   }
+
+  async function addEmployee(e) {
+    e.preventDefault();
+    if (!employeeName.trim()) return;
+    setBusy(true);
+    const { error } = await supabase.from('employees').insert({ name: employeeName.trim() });
+    setBusy(false);
+    if (error) setMessage('Erro ao adicionar funcionário: ' + error.message);
+    else { setEmployeeName(''); setMessage('Funcionário cadastrado.'); await loadData(); }
+  }
+
+  async function deleteEmployee(id) {
+    if (!window.confirm('Remover este funcionário?')) return;
+    const { error } = await supabase.from('employees').delete().eq('id', id);
+    if (error) setMessage('Erro ao excluir: ' + error.message);
+    else { setMessage('Funcionário removido.'); await loadData(); }
+  }
+
+  async function registerLoan(e) {
+    e.preventDefault();
+    if (!loanForm.material_id || !loanForm.employee_id) return;
+    setBusy(true);
+    const { error } = await supabase.from('loans').insert({
+      material_id: loanForm.material_id,
+      employee_id: loanForm.employee_id,
+      quantity: Number(loanForm.quantity) || 1,
+      returned: false
+    });
+    setBusy(false);
+    if (error) setMessage('Erro ao registar retirada: ' + error.message);
+    else { setLoanForm({ material_id: '', employee_id: '', quantity: 1 }); setMessage('Retirada registada com sucesso.'); await loadData(); }
+  }
+
+  async function toggleReturn(loanId, currentStatus) {
+    const { error } = await supabase.from('loans').update({
+      returned: !currentStatus,
+      returned_at: !currentStatus ? new Date().toISOString() : null
+    }).eq('id', loanId);
+    if (error) setMessage('Erro ao atualizar estado: ' + error.message);
+    else await loadData();
+  }
+
   async function changeEmployeePassword(e) {
     e.preventDefault(); setBusy(true); setMessage('');
     const { data, error } = await supabase.functions.invoke('change-employee-password', { body: { password: employeePassword } });
     setBusy(false);
-    if (error || data?.error) { setMessage('Não foi possível alterar a senha compartilhada. ' + (data?.error || error?.message || '')); return; }
-    setEmployeePassword(''); setMessage('Senha compartilhada dos funcionários atualizada.');
+    if (error || data?.error) { setMessage('Não foi possível alterar a senha. ' + (data?.error || error?.message || '')); return; }
+    setEmployeePassword(''); setMessage('Senha compartilhada atualizada.');
   }
 
-  if (!configured) return <main className="setup"><div className="login-card"><div className="brand-mark">VF7</div><h1>Almoxarifado VF7</h1><p>O projeto está pronto, mas falta conectar o banco de dados online.</p><p>Preencha o arquivo <code>.env</code> com a URL e a chave pública do seu projeto Supabase, conforme o guia LEIA-ME.</p></div></main>;
-  if (!session) return <main className="login-page"><form className="login-card" onSubmit={signIn}><div className="brand-mark">VF7</div><h1>Almoxarifado VF7</h1><p>Entre para consultar as localizações de materiais.</p><label>E-mail de acesso<input type="email" required value={login.email} onChange={e=>setLogin({...login,email:e.target.value})}/></label><label>Senha<input type="password" required value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/></label><button disabled={busy}>{busy?'Entrando…':'Entrar'}</button>{message && <p className="notice">{message}</p>}</form></main>;
+  if (!configured) return <main className="setup"><div className="login-card"><div className="brand-mark">VF7</div><h1>Almoxarifado VF7</h1><p>Conecte o Supabase para começar.</p></div></main>;
+  if (!session) return <main className="login-page"><form className="login-card" onSubmit={signIn}><div className="brand-mark">VF7</div><h1>Almoxarifado VF7</h1><p>Entre para consultar o almoxarifado.</p><label>E-mail<input type="email" required value={login.email} onChange={e=>setLogin({...login,email:e.target.value})}/></label><label>Senha<input type="password" required value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/></label><button disabled={busy}>{busy?'Entrando…':'Entrar'}</button>{message && <p className="notice">{message}</p>}</form></main>;
 
   return <div className="app-shell">
-    <header className="topbar"><div className="brand"><div className="brand-mark small">VF7</div><div><strong>ALMOXARIFADO VF7</strong><span>Consulta de materiais e localizações</span></div></div><div className="user-tools"><span className="role">{role === 'owner' ? 'Administrador' : 'Consulta'}</span><button className="ghost" onClick={signOut}>Sair</button></div></header>
+    <header className="topbar">
+      <div className="brand"><div className="brand-mark small">VF7</div><div><strong>ALMOXARIFADO VF7</strong><span>Controlo de Materiais e Empréstimos</span></div></div>
+      <div className="user-tools">
+        <span className="role">{role === 'owner' ? 'Administrador' : 'Consulta'}</span>
+        <button className="ghost" onClick={signOut}>Sair</button>
+      </div>
+    </header>
+
+    {/* Abas de Navegação */}
+    <nav className="tabs-nav" style={{ display: 'flex', gap: '10px', padding: '15px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+      <button className={`tab-btn ${activeTab === 'inventory' ? 'active' : ''}`} onClick={()=>setActiveTab('inventory')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'inventory' ? '#2563eb' : '#fff', color: activeTab === 'inventory' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>📦 Inventário & Prateleiras</button>
+      <button className={`tab-btn ${activeTab === 'loans' ? 'active' : ''}`} onClick={()=>setActiveTab('loans')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'loans' ? '#2563eb' : '#fff', color: activeTab === 'loans' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>🔄 Empréstimos / Funcionários</button>
+      {role === 'owner' && <button className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`} onClick={()=>setActiveTab('employees')} style={{ padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'employees' ? '#2563eb' : '#fff', color: activeTab === 'employees' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px' }}>👥 Cadastrar Funcionários</button>}
+    </nav>
+
     <main className="content">
-      <section className="welcome"><div><p className="eyebrow">LOCALIZE RAPIDAMENTE</p><h1>Onde está o material?</h1><p>Pesquise pelo nome ou pelo código e veja a posição no almoxarifado.</p></div></section>
-      {message && <div className="notice">{message}</div>}
-      <section className="search-panel"><label htmlFor="global-search">Busca geral</label><input id="global-search" className="search-input" placeholder="Digite o nome ou código do material…" value={query} onChange={e=>setQuery(e.target.value)}/>{query.trim() && <div className="results"><div className="result-count">{filtered.length} resultado(s)</div>{filtered.length ? filtered.map(m=><article className="result" key={m.id}><div><strong>{m.name}</strong><small>{m.code ? `Código: ${m.code}` : 'Sem código cadastrado'}</small></div><span className="location-tag">{m.location}</span>{role==='owner' && <button className="text-button" onClick={()=>startEdit(m)}>Editar</button>}</article>) : <p className="empty">Nenhum material encontrado.</p>}</div>}</section>
-      {role === 'owner' && <section className="admin-grid"><div className="panel"><div className="panel-heading"><div><h2>{editing ? 'Editar material' : 'Cadastrar material'}</h2><p>O código é opcional.</p></div></div><form className="material-form" onSubmit={saveMaterial}><label>Nome / descrição<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Ex.: Parafuso sextavado"/></label><label>Código (opcional)<input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} placeholder="Ex.: MAT-001"/></label><label>Localização<select value={form.location} onChange={e=>setForm({...form,location:e.target.value})}>{locations.map(l=><option key={l}>{l}</option>)}</select></label><div className="form-actions"><button disabled={busy}>{busy?'Salvando…':editing?'Salvar alterações':'Cadastrar material'}</button>{editing && <button type="button" className="secondary" onClick={startNew}>Cancelar</button>}</div></form></div><div className="panel"><h2>Acesso dos funcionários</h2><p>Altere a senha do login compartilhada de consulta.</p><form className="material-form" onSubmit={changeEmployeePassword}><label>Nova senha compartilhada<input type="password" minLength="8" required value={employeePassword} onChange={e=>setEmployeePassword(e.target.value)} placeholder="Mínimo de 8 caracteres"/></label><button disabled={busy}>Atualizar senha</button></form><p className="hint">Todos os funcionários usam o mesmo e-mail de acesso configurado no projeto.</p></div></section>}
-      <section className="shelves-section"><div className="section-heading"><div><h2>Prateleiras</h2><p>Selecione uma posição para consultar os materiais.</p></div><span className="count-pill">20 posições</span></div><div className="shelf-grid">{['A','B','C','D','E'].map(letter=><div className="shelf-card" key={letter}><div className="shelf-title">PRATELEIRA {letter}</div><div className="levels">{[1,2,3,4].map(n=>{const loc=letter+n;const count=materials.filter(m=>m.location===loc).length;return <button key={loc} className={`level ${selectedLocation===loc?'active':''}`} onClick={()=>setSelectedLocation(selectedLocation===loc?'':loc)}><strong>{loc}</strong><span>{count} material(is)</span></button>})}</div></div>)}</div></section>
-      {selectedLocation && <section className="panel location-panel"><div className="panel-heading"><div><h2>Posição {selectedLocation}</h2><p>Materiais cadastrados neste local.</p></div><button className="ghost" onClick={()=>setSelectedLocation('')}>Fechar</button></div>{materials.filter(m=>m.location===selectedLocation).length ? materials.filter(m=>m.location===selectedLocation).map(m=><article className="result" key={m.id}><div><strong>{m.name}</strong><small>{m.code ? `Código: ${m.code}` : 'Sem código cadastrado'}</small></div>{role==='owner' && <div className="row-actions"><button className="text-button" onClick={()=>startEdit(m)}>Editar</button><button className="delete-button" onClick={()=>deleteMaterial(m.id)}>Excluir</button></div>}</article>) : <p className="empty">Nenhum material cadastrado nesta posição.</p>}</section>}
-      {role==='owner' && <section className="panel all-materials"><h2>Todos os materiais</h2>{materials.length ? materials.map(m=><article className="result" key={m.id}><div><strong>{m.name}</strong><small>{m.code || 'Sem código'} · Posição {m.location}</small></div><div className="row-actions"><button className="text-button" onClick={()=>startEdit(m)}>Editar</button><button className="delete-button" onClick={()=>deleteMaterial(m.id)}>Excluir</button></div></article>) : <p className="empty">Nenhum material cadastrado ainda.</p>}</section>}
-    </main><footer>ALMOXARIFADO VF7 <span>·</span> Sistema privado de consulta</footer>
+      {message && <div className="notice" style={{ marginBottom: '15px', padding: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px' }}>{message}</div>}
+
+      {/* ABA 1: INVENTÁRIO */}
+      {activeTab === 'inventory' && <>
+        <section className="welcome"><div><p className="eyebrow">LOCALIZE RAPIDAMENTE</p><h1>Onde está o material?</h1><p>Consulte a quantidade e a posição exacta no almoxarifado.</p></div></section>
+        
+        <section className="search-panel"><label htmlFor="global-search">Busca geral</label><input id="global-search" className="search-input" placeholder="Digite o nome ou código do material…" value={query} onChange={e=>setQuery(e.target.value)}/>{query.trim() && <div className="results"><div className="result-count">{filtered.length} resultado(s)</div>{filtered.length ? filtered.map(m=><article className="result" key={m.id}><div><strong>{m.name}</strong><small>{m.code ? `Código: ${m.code}` : 'Sem código'} · Qtd: <strong>{m.quantity}</strong></small></div><span className="location-tag">{m.location}</span>{role==='owner' && <button className="text-button" onClick={()=>startEdit(m)}>Editar</button>}</article>) : <p className="empty">Nenhum material encontrado.</p>}</div>}</section>
+
+        {role === 'owner' && <section className="admin-grid"><div className="panel"><div className="panel-heading"><h2>{editing ? 'Editar material' : 'Cadastrar material'}</h2></div><form className="material-form" onSubmit={saveMaterial}><label>Nome / descrição<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Ex.: Parafuso sextavado"/></label><label>Código (opcional)<input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} placeholder="Ex.: MAT-001"/></label><label>Quantidade<input type="number" min="1" required value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})}/></label><label>Localização<select value={form.location} onChange={e=>setForm({...form,location:e.target.value})}>{locations.map(l=><option key={l}>{l}</option>)}</select></label><div className="form-actions"><button disabled={busy}>{busy?'Salvando…':editing?'Salvar alterações':'Cadastrar material'}</button>{editing && <button type="button" className="secondary" onClick={startNew}>Cancelar</button>}</div></form></div><div className="panel"><h2>Acesso dos funcionários</h2><form className="material-form" onSubmit={changeEmployeePassword}><label>Nova senha compartilhada<input type="password" minLength="8" required value={employeePassword} onChange={e=>setEmployeePassword(e.target.value)} placeholder="Mínimo de 8 caracteres"/></label><button disabled={busy}>Atualizar senha</button></form></div></section>}
+
+        <section className="shelves-section"><div className="section-heading"><div><h2>Prateleiras</h2><p>Selecione uma posição.</p></div><span className="count-pill">20 posições</span></div><div className="shelf-grid">{['A','B','C','D','E'].map(letter=><div className="shelf-card" key={letter}><div className="shelf-title">PRATELEIRA {letter}</div><div className="levels">{[1,2,3,4].map(n=>{const loc=letter+n;const count=materials.filter(m=>m.location===loc).length;return <button key={loc} className={`level ${selectedLocation===loc?'active':''}`} onClick={()=>setSelectedLocation(selectedLocation===loc?'':loc)}><strong>{loc}</strong><span>{count} tipo(s)</span></button>})}</div></div>)}</div></section>
+
+        {selectedLocation && <section className="panel location-panel"><div className="panel-heading"><div><h2>Posição {selectedLocation}</h2></div><button className="ghost" onClick={()=>setSelectedLocation('')}>Fechar</button></div>{materials.filter(m=>m.location===selectedLocation).length ? materials.filter(m=>m.location===selectedLocation).map(m=><article className="result" key={m.id}><div><strong>{m.name}</strong><small>Qtd em estoque: {m.quantity} {m.code ? `· Cód: ${m.code}` : ''}</small></div>{role==='owner' && <div className="row-actions"><button className="text-button" onClick={()=>startEdit(m)}>Editar</button><button className="delete-button" onClick={()=>deleteMaterial(m.id)}>Excluir</button></div>}</article>) : <p className="empty">Nenhum material nesta posição.</p>}</section>}
+      </>}
+
+      {/* ABA 2: EMPRÉSTIMOS E FUNCIONÁRIOS */}
+      {activeTab === 'loans' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
+        <h2>Registar Retirada / Empréstimo</h2>
+        <p>Selecione o funcionário e o material para registar quem levou.</p>
+        <form onSubmit={registerLoan} className="material-form" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: '10px', alignItems: 'end', marginBottom: '25px' }}>
+          <label>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})}><option value="">Selecione o funcionário...</option>{employees.map(emp=><option key={emp.id} value={emp.id}>{emp.name}</option>}</select></label>
+          <label>Material<select required value={loanForm.material_id} onChange={e=>setLoanForm({...loanForm, material_id: e.target.value})}><option value="">Selecione o material...</option>{materials.map(mat=><option key={mat.id} value={mat.id}>{mat.name} (Disp: {mat.quantity})</option>}</select></label>
+          <label>Quantidade<input type="number" min="1" required value={loanForm.quantity} onChange={e=>setLoanForm({...loanForm, quantity: e.target.value})}/></label>
+          <button disabled={busy} style={{ height: '42px' }}>Registar Retirada</button>
+        </form>
+
+        <h2>Histórico de Empréstimos e Devoluções</h2>
+        <div className="results">
+          {loans.length ? loans.map(l => (
+            <article className="result" key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee' }}>
+              <div>
+                <strong>{l.employees?.name || 'Funcionário'}</strong> retirou <strong>{l.quantity}x {l.materials?.name || 'Material'}</strong>
+                <br/><small>Data: {new Date(l.borrowed_at).toLocaleString('pt-BR')} {l.materials?.location ? `· Posição: ${l.materials.location}` : ''}</small>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ padding: '4px 10px', borderRadius: '4px', background: l.returned ? '#dcfce7' : '#fee2e2', color: l.returned ? '#166534' : '#991b1b', fontWeight: 'bold', fontSize: '12px' }}>
+                  {l.returned ? 'Devolvido ✓' : 'Em posse ⏳'}
+                </span>
+                <button className="secondary" onClick={()=>toggleReturn(l.id, l.returned)} style={{ padding: '6px 12px', cursor: 'pointer' }}>
+                  {l.returned ? 'Marcar como não devolvido' : 'Marcar como Devolvido'}
+                </button>
+              </div>
+            </article>
+          )) : <p className="empty">Nenhum empréstimo registado.</p>}
+        </div>
+      </div>}
+
+      {/* ABA 3: GERIR FUNCIONÁRIOS (PRÉ-CADASTRO) */}
+      {activeTab === 'employees' && role === 'owner' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
+        <h2>Pré-cadastrar Funcionários</h2>
+        <p>Adicione o nome dos colaboradores para que possa apenas selecioná-los rapidamente na hora de registar uma retirada.</p>
+        <form onSubmit={addEmployee} className="material-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <input required placeholder="Nome completo do funcionário" value={employeeName} onChange={e=>setEmployeeName(e.target.value)} style={{ flex: 1 }}/>
+          <button disabled={busy}>Adicionar Funcionário</button>
+        </form>
+
+        <h3>Lista de Funcionários Cadastrados</h3>
+        <div className="results">
+          {employees.length ? employees.map(emp => (
+            <article className="result" key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px' }}>
+              <strong>{emp.name}</strong>
+              <button className="delete-button" onClick={()=>deleteEmployee(emp.id)} style={{ padding: '4px 8px' }}>Excluir</button>
+            </article>
+          )) : <p className="empty">Nenhum funcionário cadastrado ainda.</p>}
+        </div>
+      </div>}
+    </main>
+    <footer>ALMOXARIFADO VF7 <span>·</span> Sistema privado de consulta</footer>
   </div>;
 }
