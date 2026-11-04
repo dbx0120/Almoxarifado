@@ -17,6 +17,7 @@ export default function App() {
   const [loanFilter, setLoanFilter] = useState('all'); // 'all', 'pending', 'returned'
   const [theme, setTheme] = useState('light'); // 'light', 'dark'
   const [editing, setEditing] = useState(null);
+  const [historyTarget, setHistoryTarget] = useState(null); // Material selecionado para ver o histórico de quem usou
   const [form, setForm] = useState({ code: '', name: '', location: 'A1', quantity: 1 });
   const [employeeName, setEmployeeName] = useState('');
   const [loanForm, setLoanForm] = useState({ material_id: '', employee_id: '', quantity: 1 });
@@ -38,7 +39,7 @@ export default function App() {
     const [matRes, empRes, loanRes, invRes] = await Promise.all([
       supabase.from('materials').select('*').order('name'),
       supabase.from('employees').select('*').order('name'),
-      supabase.from('loans').select('*, materials(name, location), employees(name)').order('borrowed_at', { ascending: false }),
+      supabase.from('loans').select('*, materials(id, name, location), employees(name)').order('borrowed_at', { ascending: false }),
       supabase.from('inventory_audit').select('*').order('checked_at', { ascending: false }).limit(1)
     ]);
     if (matRes.error) setMessage('Erro ao carregar materiais: ' + matRes.error.message);
@@ -95,6 +96,12 @@ export default function App() {
     return Object.values(stats).sort((a, b) => b.pendingLoans - a.pendingLoans || b.totalLoans - a.totalLoans);
   }, [employees, loans]);
 
+  // Histórico de quem já usou o material selecionado
+  const materialHistory = useMemo(() => {
+    if (!historyTarget) return [];
+    return loans.filter(l => l.material_id === historyTarget.id);
+  }, [loans, historyTarget]);
+
   async function signIn(e) {
     e.preventDefault(); setBusy(true); setMessage('');
     const { error } = await supabase.auth.signInWithPassword({ email: login.email, password: login.password });
@@ -102,7 +109,7 @@ export default function App() {
     if (error) setMessage('Não foi possível entrar. Confira e-mail e senha.');
   }
 
-  async function signOut() { await supabase.auth.signOut(); setMaterials([]); setSelectedLocation(''); }
+  async function signOut() { await supabase.auth.signOut(); setMaterials([]); setSelectedLocation(''); setHistoryTarget(null); }
   function startNew() { setEditing(null); setForm({ code: '', name: '', location: selectedLocation || 'A1', quantity: 1 }); }
   function startEdit(m) { setEditing(m.id); setForm({ code: m.code || '', name: m.name, location: m.location, quantity: m.quantity || 1 }); }
 
@@ -212,7 +219,6 @@ export default function App() {
   if (!session) return <main className="login-page"><form className="login-card" onSubmit={signIn}><div className="brand-mark">VF7</div><h1>Almoxarifado VF7</h1><p>Entre para acessar o almoxarifado.</p><label>E-mail<input type="email" required value={login.email} onChange={e=>setLogin({...login,email:e.target.value})}/></label><label>Senha<input type="password" required value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/></label><button disabled={busy}>{busy?'Entrando…':'Entrar'}</button>{message && <p className="notice">{message}</p>}</form></main>;
 
   return <div className="app-shell" style={{ background: themeStyles.bg, color: themeStyles.text, minHeight: '100vh', transition: 'background 0.3s ease' }}>
-    {/* Topbar com o Azul Escuro Original */}
     <header className="topbar" style={{ background: '#0f172a', borderBottom: '1px solid #1e293b', color: '#ffffff', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div className="brand-mark small" style={{ background: '#2563eb', color: '#fff', padding: '6px 10px', borderRadius: '6px', fontWeight: 'bold' }}>VF7</div>
@@ -242,16 +248,55 @@ export default function App() {
       {message && <div className="notice" style={{ marginBottom: '15px', padding: '10px', background: isDark ? '#1e293b' : '#eff6ff', border: `1px solid ${isDark ? '#334155' : '#bfdbfe'}`, borderRadius: '6px', color: themeStyles.text }}>{message}</div>}
 
       {activeTab === 'inventory' && <>
-        <section className="welcome"><div><p className="eyebrow" style={{ color: '#3b82f6' }}>LOCALIZE RÁPIDO</p><h1 style={{ color: themeStyles.text }}>Onde está o material?</h1><p style={{ color: themeStyles.subText }}>Consulte a quantidade e a posição exata no almoxarifado.</p></div></section>
+        <section className="welcome"><div><p className="eyebrow" style={{ color: '#3b82f6' }}>LOCALIZE RÁPIDO</p><h1 style={{ color: themeStyles.text }}>Onde está o material?</h1><p style={{ color: themeStyles.subText }}>Consulte a quantidade e a posição exata no almoxarifado. Clique em qualquer material para ver o histórico de quem já usou.</p></div></section>
         
-        <section className="search-panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, padding: '20px', borderRadius: '8px' }}><label htmlFor="global-search" style={{ color: themeStyles.text }}>Busca geral</label><input id="global-search" className="search-input" placeholder="Digite o nome ou código do material…" value={query} onChange={e=>setQuery(e.target.value)} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/>{query.trim() && <div className="results"><div className="result-count" style={{ color: themeStyles.subText }}>{filtered.length} resultado(s)</div>{filtered.length ? filtered.map(m=><article className="result" key={m.id} style={{ borderBottom: `1px solid ${themeStyles.border}` }}><div><strong style={{ color: themeStyles.text }}>{m.name}</strong><small style={{ color: themeStyles.subText }}>{m.code ? `Código: ${m.code}` : 'Sem código'} · Qtd: <strong style={{ color: themeStyles.text }}>{m.quantity}</strong></small></div><span className="location-tag">{m.location}</span>{role==='owner' && <button className="text-button" onClick={()=>startEdit(m)}>Editar</button>}</article>) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhum material encontrado.</p>}</div>}</section>
+        <section className="search-panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, padding: '20px', borderRadius: '8px' }}><label htmlFor="global-search" style={{ color: themeStyles.text }}>Busca geral</label><input id="global-search" className="search-input" placeholder="Digite o nome ou código do material…" value={query} onChange={e=>setQuery(e.target.value)} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/>{query.trim() && <div className="results"><div className="result-count" style={{ color: themeStyles.subText }}>{filtered.length} resultado(s)</div>{filtered.length ? filtered.map(m=><article className="result" key={m.id} style={{ borderBottom: `1px solid ${themeStyles.border}`, cursor: 'pointer' }} onClick={()=>setHistoryTarget(m)}><div><strong style={{ color: themeStyles.text }}>{m.name} 🔍</strong><small style={{ color: themeStyles.subText }}>{m.code ? `Código: ${m.code}` : 'Sem código'} · Qtd: <strong style={{ color: themeStyles.text }}>{m.quantity}</strong> (Clique para ver histórico)</small></div><span className="location-tag">{m.location}</span>{role==='owner' && <button className="text-button" onClick={(e)=>{e.stopPropagation(); startEdit(m);}}>Editar</button>}</article>) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhum material encontrado.</p>}</div>}</section>
 
-        {role === 'owner' && <section className="admin-grid"><div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><div className="panel-heading"><h2 style={{ color: themeStyles.text }}>{editing ? 'Editar material' : 'Cadastrar material'}</h2></div><form className="material-form" onSubmit={saveMaterial}><label style={{ color: themeStyles.text }}>Nome / descrição<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Ex.: Parafuso sextavado" style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><label style={{ color: themeStyles.text }}>Código (opcional)<input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} placeholder="Ex.: MAT-001" style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><label style={{ color: themeStyles.text }}>Quantidade<input type="number" min="1" required value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><label style={{ color: themeStyles.text }}>Localização<select value={form.location} onChange={e=>setForm({...form,location:e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}>{locations.map(l=><option key={l}>{l}</option>)}</select></label><div className="form-actions"><button disabled={busy}>{busy?'Salvando…':editing?'Salvar alterações':'Cadastrar material'}</button>{editing && <button type="button" className="secondary" onClick={startNew}>Cancelar</button>}</div></form></div><div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><h2 style={{ color: themeStyles.text }}>Senha dos Funcionários</h2><form className="material-form" onSubmit={changeEmployeePassword}><label style={{ color: themeStyles.text }}>Nova senha compartilhada<input type="password" minLength="8" required value={employeePassword} onChange={e=>setEmployeePassword(e.target.value)} placeholder="Mínimo de 8 caracteres" style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><button disabled={busy}>Atualizar Senha</button></form></div></section>}
+        {role === 'owner' && <section className="admin-grid"><div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><div className="panel-heading"><h2 style={{ color: themeStyles.text }}>{editing ? 'Editar material' : 'Cadastrar material'}</h2></div><form className="material-form" onSubmit={saveMaterial}><label style={{ color: themeStyles.text }}>Nome / descrição<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Ex.: Furadeira Bosch" style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><label style={{ color: themeStyles.text }}>Código / Patrimônio (opcional)<input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} placeholder="Ex.: PAT-042" style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><label style={{ color: themeStyles.text }}>Quantidade<input type="number" min="1" required value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><label style={{ color: themeStyles.text }}>Localização<select value={form.location} onChange={e=>setForm({...form,location:e.target.value})} style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}>{locations.map(l=><option key={l}>{l}</option>)}</select></label><div className="form-actions"><button disabled={busy}>{busy?'Salvando…':editing?'Salvar alterações':'Cadastrar material'}</button>{editing && <button type="button" className="secondary" onClick={startNew}>Cancelar</button>}</div></form></div><div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><h2 style={{ color: themeStyles.text }}>Senha dos Funcionários</h2><form className="material-form" onSubmit={changeEmployeePassword}><label style={{ color: themeStyles.text }}>Nova senha compartilhada<input type="password" minLength="8" required value={employeePassword} onChange={e=>setEmployeePassword(e.target.value)} placeholder="Mínimo de 8 caracteres" style={{ background: themeStyles.inputBg, color: themeStyles.inputText, border: `1px solid ${themeStyles.border}` }}/></label><button disabled={busy}>Atualizar Senha</button></form></div></section>}
 
-        <section className="shelves-section"><div className="section-heading"><div><h2 style={{ color: themeStyles.text }}>Prateleiras</h2><p style={{ color: themeStyles.subText }}>Selecione uma posição.</p></div><span className="count-pill">20 posições</span></div><div className="shelf-grid">{['A','B','C','D','E'].map(letter=><div className="shelf-card" key={letter} style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><div className="shelf-title" style={{ color: themeStyles.text }}>PRATELEIRA {letter}</div><div className="levels">{[1,2,3,4].map(n=>{const loc=letter+n;const count=materials.filter(m=>m.location===loc).length;return <button key={loc} className={`level ${selectedLocation===loc?'active':''}`} onClick={()=>setSelectedLocation(selectedLocation===loc?'':loc)} style={{ background: selectedLocation===loc ? '#2563eb' : themeStyles.inputBg, color: selectedLocation===loc ? '#fff' : themeStyles.text, border: `1px solid ${themeStyles.border}` }}><strong>{loc}</strong><span style={{ color: selectedLocation===loc ? '#e0e7ff' : themeStyles.subText }}>{count} tipo(s)</span></button>})}</div></div>)}</div></section>
+        <section className="shelves-section"><div className="section-heading"><div><h2 style={{ color: themeStyles.text }}>Prateleiras</h2><p style={{ color: themeStyles.subText }}>Selecione uma posição para gerenciar os itens.</p></div><span className="count-pill">20 posições</span></div><div className="shelf-grid">{['A','B','C','D','E'].map(letter=><div className="shelf-card" key={letter} style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><div className="shelf-title" style={{ color: themeStyles.text }}>PRATELEIRA {letter}</div><div className="levels">{[1,2,3,4].map(n=>{const loc=letter+n;const count=materials.filter(m=>m.location===loc).length;return <button key={loc} className={`level ${selectedLocation===loc?'active':''}`} onClick={()=>setSelectedLocation(selectedLocation===loc?'':loc)} style={{ background: selectedLocation===loc ? '#2563eb' : themeStyles.inputBg, color: selectedLocation===loc ? '#fff' : themeStyles.text, border: `1px solid ${themeStyles.border}` }}><strong>{loc}</strong><span style={{ color: selectedLocation===loc ? '#e0e7ff' : themeStyles.subText }}>{count} tipo(s)</span></button>})}</div></div>)}</div></section>
 
-        {selectedLocation && <section className="panel location-panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><div className="panel-heading"><div style={{ color: themeStyles.text }}><h2>Posição {selectedLocation}</h2></div><button className="ghost" onClick={()=>setSelectedLocation('')}>Fechar</button></div>{materials.filter(m=>m.location===selectedLocation).length ? materials.filter(m=>m.location===selectedLocation).map(m=><article className="result" key={m.id} style={{ borderBottom: `1px solid ${themeStyles.border}` }}><div><strong style={{ color: themeStyles.text }}>{m.name}</strong><small style={{ color: themeStyles.subText }}>Qtd em estoque: {m.quantity} {m.code ? `· Cód: ${m.code}` : ''}</small></div>{role==='owner' && <div className="row-actions"><button className="text-button" onClick={()=>startEdit(m)}>Editar</button><button className="delete-button" onClick={()=>deleteMaterial(m.id)}>Excluir</button></div>}</article>) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhum material cadastrado nesta posição.</p>}</section>}
+        {selectedLocation && <section className="panel location-panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}` }}><div className="panel-heading"><div style={{ color: themeStyles.text }}><h2>Posição {selectedLocation}</h2><p style={{ fontSize: '13px', color: themeStyles.subText, margin: '2px 0 0 0' }}>Clique em qualquer item para ver o histórico de quem já o utilizou.</p></div><button className="ghost" onClick={()=>setSelectedLocation('')}>Fechar</button></div>{materials.filter(m=>m.location===selectedLocation).length ? materials.filter(m=>m.location===selectedLocation).map(m=><article className="result" key={m.id} style={{ borderBottom: `1px solid ${themeStyles.border}`, cursor: 'pointer' }} onClick={()=>setHistoryTarget(m)}><div><strong style={{ color: themeStyles.text }}>{m.name} 🔍</strong><small style={{ color: themeStyles.subText }}>Qtd em estoque: {m.quantity} {m.code ? `· Cód: ${m.code}` : ''}</small></div><div className="row-actions">{role==='owner' && <button className="text-button" onClick={(e)=>{e.stopPropagation(); startEdit(m);}}>Editar</button>}{role==='owner' && <button className="delete-button" onClick={(e)=>{e.stopPropagation(); deleteMaterial(m.id);}}>Excluir</button>}</div></article>) : <p className="empty" style={{ color: themeStyles.subText }}>Nenhum material cadastrado nesta posição.</p>}</section>}
       </>}
+
+      {/* MODAL DE HISTÓRICO DA FERRAMENTA / ITEM */}
+      {historyTarget && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, borderRadius: '12px', width: '100%', maxWidth: '600px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '20px', borderBottom: `1px solid ${themeStyles.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '12px', background: '#2563eb', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>POSIÇÃO {historyTarget.location}</span>
+                <h2 style={{ color: themeStyles.text, fontSize: '18px', marginTop: '6px' }}>Histórico: {historyTarget.name}</h2>
+                <small style={{ color: themeStyles.subText }}>{historyTarget.code ? `Código: ${historyTarget.code}` : 'Sem código'} · Estoque atual: {historyTarget.quantity}</small>
+              </div>
+              <button onClick={()=>setHistoryTarget(null)} style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: themeStyles.text }}>✕</button>
+            </div>
+            
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <h3 style={{ fontSize: '14px', color: themeStyles.subText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Quem já usou este item ({materialHistory.length} registros):</h3>
+              {materialHistory.length ? materialHistory.map(item => (
+                <div key={item.id} style={{ background: isDark ? '#0f172a' : '#f8fafc', border: `1px solid ${themeStyles.border}`, padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong style={{ color: themeStyles.text, fontSize: '15px' }}>{item.employees?.name || 'Funcionário'}</strong>
+                    <div style={{ fontSize: '13px', color: themeStyles.subText, marginTop: '2px' }}>
+                      Retirou <strong>{item.quantity}x</strong> em {new Date(item.borrowed_at).toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                  <span style={{ padding: '4px 10px', borderRadius: '4px', background: item.returned ? '#dcfce7' : '#fee2e2', color: item.returned ? '#166534' : '#991b1b', fontWeight: 'bold', fontSize: '12px' }}>
+                    {item.returned ? 'Devolvido ✓' : 'Com o funcionário ⏳'}
+                  </span>
+                </div>
+              )) : (
+                <p style={{ textAlign: 'center', color: themeStyles.subText, padding: '30px 0' }}>Nenhum registro de retirada para este item até o momento.</p>
+              )}
+            </div>
+
+            <div style={{ padding: '15px 20px', borderTop: `1px solid ${themeStyles.border}`, textAlign: 'right' }}>
+              <button onClick={()=>setHistoryTarget(null)} style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Fechar Histórico</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'loans' && <div className="panel" style={{ background: themeStyles.cardBg, border: `1px solid ${themeStyles.border}`, padding: '20px', borderRadius: '8px' }}>
         <h2 style={{ color: themeStyles.text }}>Registrar Nova Requisição</h2>
