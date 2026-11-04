@@ -183,4 +183,51 @@ export default function App() {
         <p>Selecione o funcionário e o material para registar quem levou.</p>
         <form onSubmit={registerLoan} className="material-form" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px auto', gap: '10px', alignItems: 'end', marginBottom: '25px' }}>
           <label>Funcionário<select required value={loanForm.employee_id} onChange={e=>setLoanForm({...loanForm, employee_id: e.target.value})}><option value="">Selecione o funcionário...</option>{employees.map(emp=>(<option key={emp.id} value={emp.id}>{emp.name}</option>))}</select></label>
-          <label>Material<select required value={loanForm.material_id} onChange={e=>setLoanForm({...loanForm, material_id: e.target.value})}><option value="">Selecione o material...</option>{materials.map(mat=>(<option key={mat.id} value={mat.id}>{mat.name} (Disp: {mat.quantity})</option>))
+          <label>Material<select required value={loanForm.material_id} onChange={e=>setLoanForm({...loanForm, material_id: e.target.value})}><option value="">Selecione o material...</option>{materials.map(mat=>(<option key={mat.id} value={mat.id}>{mat.name} (Disp: {mat.quantity})</option>))}</select></label>
+          <label>Quantidade<input type="number" min="1" required value={loanForm.quantity} onChange={e=>setLoanForm({...loanForm, quantity: e.target.value})}/></label>
+          <button disabled={busy} style={{ height: '42px' }}>Registar Retirada</button>
+        </form>
+
+        <h2>Histórico de Empréstimos e Devoluções</h2>
+        <div className="results">
+          {loans.length ? loans.map(l => (
+            <article className="result" key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee' }}>
+              <div>
+                <strong>{l.employees?.name || 'Funcionário'}</strong> retirou <strong>{l.quantity}x {l.materials?.name || 'Material'}</strong>
+                <br/><small>Data: {new Date(l.borrowed_at).toLocaleString('pt-BR')} {l.materials?.location ? `· Posição: ${l.materials.location}` : ''}</small>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ padding: '4px 10px', borderRadius: '4px', background: l.returned ? '#dcfce7' : '#fee2e2', color: l.returned ? '#166534' : '#991b1b', fontWeight: 'bold', fontSize: '12px' }}>
+                  {l.returned ? 'Devolvido ✓' : 'Em posse ⏳'}
+                </span>
+                <button className="secondary" onClick={()=>toggleReturn(l.id, l.returned)} style={{ padding: '6px 12px', cursor: 'pointer' }}>
+                  {l.returned ? 'Marcar como não devolvido' : 'Marcar como Devolvido'}
+                </button>
+              </div>
+            </article>
+          )) : <p className="empty">Nenhum empréstimo registado.</p>}
+        </div>
+      </div>}
+
+      {activeTab === 'employees' && role === 'owner' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
+        <h2>Pré-cadastrar Funcionários</h2>
+        <p>Adicione o nome dos colaboradores para que possa apenas selecioná-los rapidamente na hora de registar uma retirada.</p>
+        <form onSubmit={addEmployee} className="material-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <input required placeholder="Nome completo do funcionário" value={employeeName} onChange={e=>setEmployeeName(e.target.value)} style={{ flex: 1 }}/>
+          <button disabled={busy}>Adicionar Funcionário</button>
+        </form>
+
+        <h3>Lista de Funcionários Cadastrados</h3>
+        <div className="results">
+          {employees.length ? employees.map(emp => (
+            <article className="result" key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px' }}>
+              <strong>{emp.name}</strong>
+              <button className="delete-button" onClick={()=>deleteEmployee(emp.id)} style={{ padding: '4px 8px' }}>Excluir</button>
+            </article>
+          )) : <p className="empty">Nenhum funcionário cadastrado ainda.</p>}
+        </div>
+      </div>}
+    </main>
+    <footer>ALMOXARIFADO VF7 <span>·</span> Sistema privado de consulta</footer>
+  </div>;
+}
