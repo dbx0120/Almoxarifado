@@ -13,6 +13,7 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory', 'loans', 'employees', 'reports'
+  const [loanFilter, setLoanFilter] = useState('all'); // 'all', 'pending', 'returned'
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', location: 'A1', quantity: 1 });
   const [employeeName, setEmployeeName] = useState('');
@@ -66,6 +67,13 @@ export default function App() {
       (m.code || '').toLocaleLowerCase('pt-BR').includes(q)
     );
   }, [materials, query]);
+
+  // Filtragem das requisições (Todas, Apenas Pendentes ou Apenas Devolvidas)
+  const filteredLoans = useMemo(() => {
+    if (loanFilter === 'pending') return loans.filter(l => !l.returned);
+    if (loanFilter === 'returned') return loans.filter(l => l.returned);
+    return loans;
+  }, [loans, loanFilter]);
 
   // Cálculo para o ranking de funcionários baseado nas requisições
   const employeeRanking = useMemo(() => {
@@ -213,9 +221,18 @@ export default function App() {
           <button disabled={busy} style={{ height: '42px' }}>Registrar Retirada</button>
         </form>
 
-        <h2>Histórico de Requisições e Devoluções</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+          <h2>Histórico de Requisições e Devoluções</h2>
+          {/* Botões de Filtro Rápido */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" onClick={()=>setLoanFilter('all')} style={{ padding: '6px 12px', cursor: 'pointer', background: loanFilter === 'all' ? '#2563eb' : '#f1f5f9', color: loanFilter === 'all' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}>Todos</button>
+            <button type="button" onClick={()=>setLoanFilter('pending')} style={{ padding: '6px 12px', cursor: 'pointer', background: loanFilter === 'pending' ? '#dc2626' : '#f1f5f9', color: loanFilter === 'pending' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}>⚠️ Apenas Pendentes</button>
+            <button type="button" onClick={()=>setLoanFilter('returned')} style={{ padding: '6px 12px', cursor: 'pointer', background: loanFilter === 'returned' ? '#166534' : '#f1f5f9', color: loanFilter === 'returned' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold' }}>✓ Apenas Devolvidos</button>
+          </div>
+        </div>
+
         <div className="results">
-          {loans.length ? loans.map(l => (
+          {filteredLoans.length ? filteredLoans.map(l => (
             <article className="result" key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee' }}>
               <div>
                 <strong>{l.employees?.name || 'Funcionário'}</strong> retirou <strong>{l.quantity}x {l.materials?.name || 'Material'}</strong>
@@ -231,7 +248,7 @@ export default function App() {
                 <button className="delete-button" onClick={()=>deleteLoan(l.id)} title="Excluir requisição" style={{ padding: '6px 10px', cursor: 'pointer' }}>🗑️</button>
               </div>
             </article>
-          )) : <p className="empty">Nenhuma requisição registrada.</p>}
+          )) : <p className="empty">Nenhuma requisição encontrada com este filtro.</p>}
         </div>
       </div>}
 
@@ -246,48 +263,4 @@ export default function App() {
             const totalPercent = (item.totalLoans / maxVal) * 100;
 
             return (
-              <div key={item.name} style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <strong style={{ fontSize: '16px' }}>{item.name}</strong>
-                  <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
-                    <span style={{ color: '#dc2626', fontWeight: 'bold' }}>⚠️ Pendentes: {item.pendingLoans}</span>
-                    <span style={{ color: '#475569' }}>Total Requisições: {item.totalLoans}</span>
-                  </div>
-                </div>
-                {/* Barra de Progresso Gráfica */}
-                <div style={{ background: '#e2e8f0', borderRadius: '4px', height: '12px', width: '100%', overflow: 'hidden', display: 'flex' }}>
-                  <div style={{ width: `${pendingPercent}%`, background: '#dc2626', transition: 'width 0.4s ease' }} title={`${item.pendingLoans} pendentes`} />
-                  <div style={{ width: `${totalPercent - pendingPercent}%`, background: '#2563eb', transition: 'width 0.4s ease' }} title={`Devolvidos`} />
-                </div>
-              </div>
-            );
-          }) : <p className="empty">Nenhum dado de funcionário para exibir no gráfico ainda.</p>}
-        </div>
-        <div style={{ marginTop: '20px', fontSize: '13px', color: '#64748b', display: 'flex', gap: '20px' }}>
-          <span><span style={{ display: 'inline-block', width: '12px', height: '12px', background: '#dc2626', borderRadius: '2px', marginRight: '5px' }}></span> Itens Pendentes (Com o funcionário)</span>
-          <span><span style={{ display: 'inline-block', width: '12px', height: '12px', background: '#2563eb', borderRadius: '2px', marginRight: '5px' }}></span> Itens Já Devolvidos</span>
-        </div>
-      </div>}
-
-      {activeTab === 'employees' && role === 'owner' && <div className="panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px' }}>
-        <h2>Pré-cadastrar Funcionários</h2>
-        <p>Adicione o nome dos colaboradores para que você possa apenas selecioná-los rapidamente na hora de registrar uma retirada.</p>
-        <form onSubmit={addEmployee} className="material-form" style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          <input required placeholder="Nome completo do funcionário" value={employeeName} onChange={e=>setEmployeeName(e.target.value)} style={{ flex: 1 }}/>
-          <button disabled={busy}>Adicionar Funcionário</button>
-        </form>
-
-        <h3>Lista de Funcionários Cadastrados</h3>
-        <div className="results">
-          {employees.length ? employees.map(emp => (
-            <article className="result" key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px' }}>
-              <strong>{emp.name}</strong>
-              <button className="delete-button" onClick={()=>deleteEmployee(emp.id)} style={{ padding: '4px 8px' }}>Excluir</button>
-            </article>
-          )) : <p className="empty">Nenhum funcionário cadastrado ainda.</p>}
-        </div>
-      </div>}
-    </main>
-    <footer>ALMOXARIFADO VF7 <span>·</span> Sistema interno de controle</footer>
-  </div>;
-}
+              <div key={
