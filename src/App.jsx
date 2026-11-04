@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://ztrsdheqesvxopofogxg.supabase.co';
-const supabaseKey = 'sb_publishable_CaY3XZG1OJbSsGmCEMWgvA_e5F_Hzl0';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient('https://ztrsdheqesvxopofogxg.supabase.co', 'sb_publishable_CaY3XZG1OJbSsGmCEMWgvA_e5F_Hzl0');
 const locations = ['A1','A2','A3','A4','B1','B2','B3','B4','C1','C2','C3','C4','D1','D2','D3','D4','E1','E2','E3','E4'];
 
 export default function App() {
@@ -18,7 +16,7 @@ export default function App() {
   const [employeePassword, setEmployeePassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const configured = Boolean(supabaseUrl && supabaseKey);
+  const configured = Boolean(supabase);
 
   async function loadProfile(user) {
     if (!user) { setRole(null); return; }
