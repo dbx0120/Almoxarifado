@@ -1,0 +1,82 @@
+ALMOXARIFADO VF7 — PROJETO ONLINE
+=================================
+
+O que já está preparado
+-----------------------
+- Tela adaptável para celular e computador.
+- Busca geral por nome ou código (código opcional).
+- 5 prateleiras e 20 posições: A1 a E4.
+- Cadastro, edição e exclusão de materiais pelo administrador.
+- Funcionários consultam, mas não alteram os materiais.
+- Login do administrador separado do login compartilhado dos funcionários.
+- Alteração da senha compartilhada pelo painel do administrador.
+- Banco de dados online com políticas de acesso (Supabase).
+
+IMPORTANTE
+----------
+Este pacote é o código do sistema, ainda NÃO está publicado na internet.
+Para funcionar em vários aparelhos, é necessário criar e conectar um projeto Supabase
+(banco/login) e publicar o site em um serviço de hospedagem. Não compartilhe a
+chave SERVICE_ROLE com ninguém e nunca coloque essa chave no arquivo .env do site.
+
+ETAPA 1 — Criar o banco online
+------------------------------
+1. Entre em https://supabase.com e crie uma conta/projeto.
+2. Guarde a senha do banco em local seguro.
+3. No projeto, abra SQL Editor > New query.
+4. Copie todo o conteúdo de supabase/schema.sql e execute.
+5. Em Authentication > Providers, mantenha Email habilitado.
+6. Desative o cadastro público (Allow new users to sign up), se essa opção estiver habilitada.
+
+ETAPA 2 — Criar os dois acessos
+-------------------------------
+1. Em Authentication > Users, crie um usuário com seu e-mail e senha pessoal.
+2. Copie o UUID desse usuário.
+3. No SQL Editor, execute:
+   update public.profiles set role = 'owner' where id = 'COLE-O-UUID-AQUI';
+4. Crie outro usuário com um e-mail compartilhado da equipe e uma senha inicial.
+   Todos os funcionários usarão esse mesmo e-mail e senha.
+5. Não promova o usuário compartilhado a owner: ele deve continuar como employee.
+
+ETAPA 3 — Conectar o site
+-------------------------
+1. Instale Node.js em https://nodejs.org (versão LTS).
+2. Abra esta pasta no terminal e execute: npm install
+3. No painel Supabase, abra Project Settings > API.
+4. Copie Project URL e anon/public key.
+5. Crie um arquivo chamado .env na pasta principal, usando .env.example como modelo:
+   VITE_SUPABASE_URL=URL_DO_PROJETO
+   VITE_SUPABASE_ANON_KEY=CHAVE_PUBLICA_ANON
+6. Execute: npm run dev
+7. Para gerar a versão de publicação: npm run build
+
+ETAPA 4 — Habilitar troca da senha compartilhada
+------------------------------------------------
+A função segura está em:
+supabase/functions/change-employee-password/index.ts
+
+No terminal, instale/abra a CLI do Supabase, faça login e vincule o projeto.
+Configure os secrets da função:
+  supabase secrets set EMPLOYEE_LOGIN_EMAIL=EMAIL_COMPARTILHADO
+  supabase secrets set SUPABASE_SERVICE_ROLE_KEY=SUA_SERVICE_ROLE_KEY
+Faça deploy:
+  supabase functions deploy change-employee-password
+
+A SUPABASE_SERVICE_ROLE_KEY deve ficar somente nos secrets da função, nunca no navegador.
+
+ETAPA 5 — Publicar na internet
+------------------------------
+Publique a pasta do projeto em um serviço de hospedagem compatível com Vite
+(ex.: Vercel ou Netlify), configurando as mesmas duas variáveis VITE_SUPABASE_URL
+e VITE_SUPABASE_ANON_KEY no painel de ambiente da hospedagem.
+
+NOTAS DE SEGURANÇA E USO
+------------------------
+- O banco aplica permissões: usuários autenticados podem consultar materiais;
+  somente o perfil owner pode inserir, editar ou excluir.
+- A senha compartilhada é alterada pela função protegida, que verifica o papel owner.
+- O projeto não controla quantidade/estoque e não armazena fotos.
+- O login compartilhado é simples, mas não identifica qual funcionário fez cada consulta.
+- Para segurança, use senhas fortes e não reutilize senhas pessoais.
+- Antes de uso real, valide o fluxo de login e as permissões com uma conta owner
+  e outra employee.
